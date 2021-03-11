@@ -1,96 +1,71 @@
 import os
-import docker
 from Lib.misc import API as MiscAPI
 from .models import Dockerfile, Image, Container, Port
 
 
 class Api:
     def __init__(self):
-        self.client = docker.from_env()
+        self.django_root_path = os.getcwd()
+        self.dockerfiles_path = f"{self.django_root_path}/dockerfiles"
 
-    def build_image(self, dockerfile=None):
-        cwd = os.getcwd()
-        path = ""
-        dockerfile_name = ""
-        dockerfile_path = ""
+    @staticmethod
+    def get_image(name):
+        try:
+            return Image.objects.get(name=name)
+        except Image.DoesNotExist:
+            return None
 
-        if dockerfile:
-            path = f"{cwd}/Docker/tmp"
-            dockerfile_name = MiscAPI.get_random_string(16)
-            dockerfile_path = f"{path}/{dockerfile_name}"
+    @staticmethod
+    def get_dockerfile(filename):
+        try:
+            return Dockerfile.objects.get(filepath__contains=filename)
+        except Dockerfile.DoesNotExist:
+            return None
 
-            with open(dockerfile_path, 'w') as f:
-                f.write(dockerfile)
+    def create_image(self, name, **kwargs):
+        if self.get_image(name):
+            return None
+
+        dockerfile_content = kwargs.get('dockerfile_content')
+        dockerfile_path = kwargs.get('dockerfile_path')
+
+        dockerfile = {}
+        if dockerfile_path:
+            content = ""
+            with open(dockerfile_path) as f:
+                content = f.read()
+
+            if len(content) >= 0:
+                dockerfile = Dockerfile.objects.create(filepath=dockerfile_path, content=content)
+
+        elif dockerfile_content:
+            random_dockerfile_name = MiscAPI.get_random_string(32)
+            dockerfile_path = f"{self.dockerfiles_path}/{random_dockerfile_name}"
+            with open(dockerfile_path, 'w', encoding='utf-8') as f:
+                f.write(dockerfile_content)
+
+            dockerfile = Dockerfile.objects.create(filepath=dockerfile_path, content=dockerfile_content)
 
         else:
-            path = f"{os.getcwd()}/Docker/"
-            dockerfile_name = "Dockerfile"
-            dockerfile_path = f"{path}/{dockerfile_name}"
+            # Is Default Dockerfile Exist ?
+            dockerfile = self.get_dockerfile('Dockerfile')
+            if dockerfile is None:
+                dockerfile_path = f"{self.dockerfiles_path}/Dockerfile"
+                content = ""
+                with open(dockerfile_path) as f:
+                    content = f.read()
 
+                dockerfile = Dockerfile.objects.create(filepath=dockerfile_path, content=content)
 
-        tag = MiscAPI.get_random_string(16)
-        image = self.client.images.build(path=path, dockerfile=dockerfile_name, tag=tag)
-        dockerfile_object = Dockerfile.objects.create(filepath=dockerfile_path, content=dockerfile)
-        Image.objects.create(tag=tag, dockerfile=dockerfile_object)
+        image = Image.objects.create(name=name, dockerfile=dockerfile)
 
-        return image
-
-    def get_all_images(self):
-        return self.client.images.list()
-
-    def get_image_by_name(self, name):
-        try:
-            return self.client.images.get(name)
-        except docker.errors.ImageNotFound:
-            return None
+        return image, dockerfile
 
     def delete_image(self, name):
-        image = self.get_image_by_name(name)
-        if image is None:
-            return False
+        image = self.get_image(name)
+        image.delete()
 
-        image.remove()
 
-        if self.get_image_by_name(name):
-            return False
-        else:
-            return True
 
-    def create_container(self, container_name, dockerfile=None):
-        image = self.build_image()
-        self.client.containers.run(image.tag, name=container_name, detach=True)
-        container = Container.objects.create(name=container_name, image=image, command='', description='')
-        return container
 
-    def get_container_by_id_or_name(self, id_or_name):
-        try:
-            return self.client.containers.get(id_or_name)
-        except docker.errors.NotFound:
-            return None
-
-    def delete_container(self, id_or_name):
-        container = self.get_container_by_id_or_name(id_or_name)
-        container.remove()
-
-    def commit_container(self, id_or_name, repository=None, tag=None, **kwargs):
-        container = self.get_container_by_id_or_name(id_or_name)
-        if container is None:
-            return None
-
-        repository = repository or kwargs.get('repository')
-        tag = tag or kwargs.get('tag')
-        message = kwargs.get('message')
-        author = kwargs.get('author')
-
-        container.commit(
-            repository=repository,
-            tag=tag,
-            message=message,
-            author=author
-        )
-
-        image = self.get_image_by_name(repository)
-        if image:
-            return image
-        else:
-            return None
+API = Api()

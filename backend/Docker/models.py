@@ -7,7 +7,7 @@ class Dockerfile(models.Model):
 
 
 class Image(models.Model):
-    tag = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
     dockerfile = models.ForeignKey(Dockerfile, on_delete=models.CASCADE)
 
 
