@@ -1,38 +1,16 @@
-import os
 import docker
 from Lib.misc import API as MiscAPI
+from Docker.api import API as DockerAPI
 
 
 class Api:
     def __init__(self):
         self.client = docker.from_env()
 
-    def build_image(self, dockerfile=None):
-        cwd = os.getcwd()
-        path = ""
-        dockerfile_name = ""
-        dockerfile_path = ""
-
-        if dockerfile:
-            path = f"{cwd}/Docker/tmp"
-            dockerfile_name = MiscAPI.get_random_string(16)
-            dockerfile_path = f"{path}/{dockerfile_name}"
-
-            with open(dockerfile_path, 'w') as f:
-                f.write(dockerfile)
-
-        else:
-            # Build Image Using Default Dockerfile
-            path = f"{os.getcwd()}/Docker/"
-            dockerfile_name = "Dockerfile"
-            dockerfile_path = f"{path}/{dockerfile_name}"
-
-        tag = MiscAPI.get_random_string(16)
-        image = self.client.images.build(path=path, dockerfile=dockerfile_name, tag=tag)
-        dockerfile_object = Dockerfile.objects.create(filepath=dockerfile_path, content=dockerfile)
-        Image.objects.create(tag=tag, dockerfile=dockerfile_object)
-
-        return image
+    def build_image(self, name=None, dockerfile_content=None):
+        name = name or MiscAPI.get_random_string(16)
+        image, dockerfile = DockerAPI.create_image(name, dockerfile_content=dockerfile_content)
+        return self.client.images.build(path=dockerfile.filepath, dockerfile=dockerfile.content, tag=name)
 
     def get_all_images(self):
         return self.client.images.list()
